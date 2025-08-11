@@ -2,9 +2,18 @@ name: Run TFS Search
 
 on:
   workflow_dispatch:
+    inputs:
+      search_name:
+        description: "Name to search"
+        required: false
+        default: ""
+      search_id:
+        description: "ID Number to search"
+        required: false
+        default: ""
 
 jobs:
-  build:
+  run-search:
     runs-on: ubuntu-latest
 
     steps:
@@ -17,33 +26,26 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Install Chromium dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libnss3 \
-            libxss1 \
-            libasound2 \
-            fonts-liberation \
-            libatk-bridge2.0-0 \
-            libatk1.0-0 \
-            libcups2 \
-            libdrm2 \
-            libgbm1 \
-            libgtk-3-0 \
-            libnspr4 \
-            libx11-xcb1 \
-            libxcomposite1 \
-            libxdamage1 \
-            libxrandr2 \
-            xdg-utils \
-            wget
+            libnss3 libxss1 libasound2 fonts-liberation \
+            libatk-bridge2.0-0 libatk1.0-0 libcups2 libdrm2 \
+            libgbm1 libgtk-3-0 libnspr4 libx11-xcb1 libxcomposite1 \
+            libxdamage1 libxrandr2 xdg-utils wget
 
-      - name: Run TFS Search
-        run: node tfs-search.js
+      - name: Run Puppeteer script
         env:
-          PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium-browser
-          PUPPETEER_DISABLE_HEADLESS_WARNING: "true"
-          PUPPETEER_ARGS: "--no-sandbox --disable-setuid-sandbox"
+          SEARCH_NAME: ${{ github.event.inputs.search_name }}
+          SEARCH_ID: ${{ github.event.inputs.search_id }}
+        run: node tfs-search.js
+
+      - name: Upload PDF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfs-results
+          path: tfs-results.pdf
+        if: always()
