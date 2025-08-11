@@ -20,18 +20,27 @@ const fs = require("fs");
 
     await page.goto("https://tfs.fic.gov.za/Pages/Search", { waitUntil: "networkidle2" });
 
+    // Wait for iframe and get frame context
+    const frameHandle = await page.waitForSelector('iframe');
+    const frame = await frameHandle.contentFrame();
+
+    // Wait for inputs and fill them
     if (name) {
-      await page.type('input[name="txtName"]', name);
+      await frame.waitForSelector('input[name="txtName"]', { timeout: 5000 });
+      await frame.type('input[name="txtName"]', name);
     }
     if (idNumber) {
-      await page.type('input[name="txtIDNumber"]', idNumber);
+      await frame.waitForSelector('input[name="txtIDNumber"]', { timeout: 5000 });
+      await frame.type('input[name="txtIDNumber"]', idNumber);
     }
 
+    // Click search and wait for navigation
     await Promise.all([
-      page.click("#btnSearchPerson"),
-      page.waitForNavigation({ waitUntil: "networkidle2" }),
+      frame.click('#btnSearchPerson'),
+      frame.waitForNavigation({ waitUntil: 'networkidle2' }),
     ]);
 
+    // Export PDF of full page
     const pdfBuffer = await page.pdf({ format: "A4", printBackground: true });
 
     fs.writeFileSync("tfs-results.pdf", pdfBuffer);
