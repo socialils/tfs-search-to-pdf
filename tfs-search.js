@@ -1,70 +1,61 @@
-const puppeteer = require('puppeteer');
+const puppeteer = require("puppeteer");
+const fs = require("fs");
 
 (async () => {
-  const name = "Ilse de Lange";
-  const idNumber = "9401051460088";
+  const searchName = process.env.SEARCH_NAME || "";
+  const searchId = process.env.SEARCH_ID || "";
 
-  console.log(`Searching TFS for Name: ${name}, ID: ${idNumber}`);
+  console.log(`Searching TFS for Name: ${searchName}, ID: ${searchId}`);
 
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-gpu',
-      '--window-size=1920,1080'
-    ]
-  });
-
+  const browser = await puppeteer.launch({ headless: "new" });
   const page = await browser.newPage();
 
-  // Spoof user-agent to avoid bot blocking
-  await page.setUserAgent(
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36'
-  );
+  await page.goto("https://tfs.dev/yoursearchpage", { waitUntil: "networkidle2" });
 
-  await page.goto('https://[YOUR-TFS-URL-HERE]', { waitUntil: 'networkidle2', timeout: 60000 });
-
-  // Save initial page HTML + screenshot for debugging
-  const fs = require('fs');
-  const htmlContent = await page.content();
-  fs.writeFileSync('page.html', htmlContent);
-  await page.screenshot({ path: 'page.png', fullPage: true });
-
-  console.log(`Page content length: ${htmlContent.length}`);
-
-  // If the field is inside an iframe, find it
-  const frames = page.frames();
-  let nameInputFrame = null;
-  for (const frame of frames) {
-    if (await frame.$('input[name="txtName"]')) {
-      nameInputFrame = frame;
+  // Try multiple possible selectors for the name field
+  const nameSelectors = ['input[name="Name"]', '#Name', 'input[placeholder*="Name"]'];
+  let nameSelector = null;
+  for (const sel of nameSelectors) {
+    if (await page.$(sel)) {
+      nameSelector = sel;
       break;
     }
   }
 
-  if (!nameInputFrame) {
+  if (!nameSelector) {
     console.error("Name input field not found on page.");
+    await fs.promises.writeFile("page.html", await page.content());
+    await page.screenshot({ path: "page.png", fullPage: true });
+    console.log("Saved page screenshot and HTML for debugging.");
     await browser.close();
     process.exit(1);
   }
 
-  console.log("Name input exists? true");
+  // Same approach for ID field
+  const idSelectors = ['input[name="ID"]', '#ID', 'input[placeholder*="ID"]'];
+  let idSelector = null;
+  for (const sel of idSelectors) {
+    if (await page.$(sel)) {
+      idSelector = sel;
+      break;
+    }
+  }
 
-  // Fill in fields
-  await nameInputFrame.type('input[name="txtName"]', name);
-  await nameInputFrame.type('input[name="txtIDNumber"]', idNumber);
+  // Fill the form
+  await page.type(nameSelector, searchName);
+  if (idSelector) {
+    await page.type(idSelector, searchId);
+  }
 
   // Click search button
-  await Promise.all([
-    nameInputFrame.click('input[name="btnSearch"]'),
-    page.waitForNavigation({ waitUntil: 'networkidle2' })
-  ]);
+  const searchButton = await page.$('button[type="submit"], input[type="submit"]');
+  if (searchButton) {
+    await searchButton.click();
+    await page.waitForNavigation({ waitUntil: "networkidle2" });
+  }
 
-  // Save results
-  const resultsHTML = await page.content();
-  fs.writeFileSync('results.html', resultsHTML);
-  await page.screenshot({ path: 'results.png', fullPage: true });
+  // Save PDF of results
+  await page.pdf({ path: "tfs-results.pdf", format: "A4" });
 
   await browser.close();
 })();
