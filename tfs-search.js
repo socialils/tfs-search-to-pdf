@@ -1,61 +1,56 @@
 const puppeteer = require("puppeteer");
-const fs = require("fs");
 
 (async () => {
-  const searchName = process.env.SEARCH_NAME || "";
-  const searchId = process.env.SEARCH_ID || "";
+  try {
+    // Pull inputs from environment variables
+    const searchName = process.env.SEARCH_NAME || "";
+    const searchId = process.env.SEARCH_ID || "";
 
-  console.log(`Searching TFS for Name: ${searchName}, ID: ${searchId}`);
-
-  const browser = await puppeteer.launch({ headless: "new" });
-  const page = await browser.newPage();
-
-  await page.goto("https://tfs.dev/yoursearchpage", { waitUntil: "networkidle2" });
-
-  // Try multiple possible selectors for the name field
-  const nameSelectors = ['input[name="Name"]', '#Name', 'input[placeholder*="Name"]'];
-  let nameSelector = null;
-  for (const sel of nameSelectors) {
-    if (await page.$(sel)) {
-      nameSelector = sel;
-      break;
+    if (!searchName && !searchId) {
+      console.error("❌ No search name or ID provided.");
+      process.exit(1);
     }
-  }
 
-  if (!nameSelector) {
-    console.error("Name input field not found on page.");
-    await fs.promises.writeFile("page.html", await page.content());
-    await page.screenshot({ path: "page.png", fullPage: true });
-    console.log("Saved page screenshot and HTML for debugging.");
+    console.log(`🔍 Searching for Name: "${searchName}", ID: "${searchId}"`);
+
+    // Detect GitHub Actions environment
+    const isCI = !!process.env.GITHUB_ACTIONS;
+
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: isCI ? ["--no-sandbox", "--disable-setuid-sandbox"] : []
+    });
+
+    const page = await browser.newPage();
+
+    // Go to target site
+    await page.goto("https://www.example.com/search", {
+      waitUntil: "networkidle2"
+    });
+
+    // Fill search form if fields are provided
+    if (searchName) {
+      await page.type("#nameInput", searchName);
+    }
+    if (searchId) {
+      await page.type("#idInput", searchId);
+    }
+
+    // Submit form
+    await page.click("#submitButton");
+    await page.waitForNavigation({ waitUntil: "networkidle2" });
+
+    // Save results page to PDF
+    await page.pdf({
+      path: "tfs-results.pdf",
+      format: "A4"
+    });
+
+    console.log("✅ Search complete. PDF saved as tfs-results.pdf");
+
     await browser.close();
+  } catch (err) {
+    console.error("❌ Error running Puppeteer script:", err);
     process.exit(1);
   }
-
-  // Same approach for ID field
-  const idSelectors = ['input[name="ID"]', '#ID', 'input[placeholder*="ID"]'];
-  let idSelector = null;
-  for (const sel of idSelectors) {
-    if (await page.$(sel)) {
-      idSelector = sel;
-      break;
-    }
-  }
-
-  // Fill the form
-  await page.type(nameSelector, searchName);
-  if (idSelector) {
-    await page.type(idSelector, searchId);
-  }
-
-  // Click search button
-  const searchButton = await page.$('button[type="submit"], input[type="submit"]');
-  if (searchButton) {
-    await searchButton.click();
-    await page.waitForNavigation({ waitUntil: "networkidle2" });
-  }
-
-  // Save PDF of results
-  await page.pdf({ path: "tfs-results.pdf", format: "A4" });
-
-  await browser.close();
 })();
