@@ -20,27 +20,24 @@ const fs = require("fs");
 
     await page.goto("https://tfs.fic.gov.za/Pages/Search", { waitUntil: "networkidle2" });
 
-    // Wait for iframe and get frame context
-    const frameHandle = await page.waitForSelector('iframe');
-    const frame = await frameHandle.contentFrame();
+    // Wait for the name input field to appear
+    await page.waitForSelector('input[name="txtName"]', { timeout: 10000 });
 
-    // Wait for inputs and fill them
+    // Optional: wait 2 seconds extra
+    await page.waitForTimeout(2000);
+
     if (name) {
-      await frame.waitForSelector('input[name="txtName"]', { timeout: 5000 });
-      await frame.type('input[name="txtName"]', name);
+      await page.type('input[name="txtName"]', name);
     }
     if (idNumber) {
-      await frame.waitForSelector('input[name="txtIDNumber"]', { timeout: 5000 });
-      await frame.type('input[name="txtIDNumber"]', idNumber);
+      await page.type('input[name="txtIDNumber"]', idNumber);
     }
 
-    // Click search and wait for navigation
     await Promise.all([
-      frame.click('#btnSearchPerson'),
-      frame.waitForNavigation({ waitUntil: 'networkidle2' }),
+      page.click("#btnSearchPerson"),
+      page.waitForNavigation({ waitUntil: "networkidle2" }),
     ]);
 
-    // Export PDF of full page
     const pdfBuffer = await page.pdf({ format: "A4", printBackground: true });
 
     fs.writeFileSync("tfs-results.pdf", pdfBuffer);
@@ -50,6 +47,16 @@ const fs = require("fs");
     await browser.close();
   } catch (error) {
     console.error("Error occurred:", error);
+
+    // For debugging: output page content if selector failed
+    try {
+      const page = await browser.newPage();
+      const content = await page.content();
+      console.log("Page content:", content);
+    } catch (e) {
+      console.log("Failed to get page content for debugging.");
+    }
+
     process.exit(1);
   }
 })();
