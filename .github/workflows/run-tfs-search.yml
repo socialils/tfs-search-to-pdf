@@ -1,23 +1,16 @@
-name: Run TFS Search
+name: Run Puppeteer Script
 
 on:
+  push:
+    branches: [ main ]
   workflow_dispatch:
-    inputs:
-      search_name:
-        description: "Name to search"
-        required: false
-        default: ""
-      search_id:
-        description: "ID Number to search"
-        required: false
-        default: ""
 
 jobs:
-  run-search:
+  puppeteer:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -26,26 +19,23 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm install puppeteer
+        run: npm ci
 
       - name: Run Puppeteer script
-        run: node tfs-search.js
         env:
-          SEARCH_NAME: ${{ github.event.inputs.search_name }}
-          SEARCH_ID: ${{ github.event.inputs.search_id }}
-
-      - name: Upload PDF results
-        uses: actions/upload-artifact@v4
-        with:
-          name: tfs-results
-          path: tfs-results.pdf
-        if: always() # even if job fails, still try to upload
-
-      - name: Upload debug files
-        uses: actions/upload-artifact@v4
-        with:
-          name: tfs-debug
-          path: |
-            debug-screenshot.png
-            debug-page.html
-        if: always()
+          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: false
+          PUPPETEER_EXECUTABLE_PATH: ""
+        run: |
+          node -e "
+          (async () => {
+            const puppeteer = require('puppeteer');
+            const browser = await puppeteer.launch({
+              headless: 'new',
+              args: ['--no-sandbox', '--disable-setuid-sandbox']
+            });
+            const page = await browser.newPage();
+            await page.goto('https://example.com', { waitUntil: 'networkidle2' });
+            console.log(await page.title());
+            await browser.close();
+          })();
+          "
