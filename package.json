@@ -1,9 +1,17 @@
 {
   "name": "tfs-search-to-pdf",
   "version": "1.0.0",
+  "description": "Automated TFS search to PDF using Puppeteer",
   "main": "tfs-search.js",
+  "type": "module",
   "license": "MIT",
+  "scripts": {
+    "start": "node tfs-search.js"
+  },
   "dependencies": {
-    "puppeteer": "^22.0.0"
+    "puppeteer": "22.0.0"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
