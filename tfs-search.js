@@ -33,12 +33,14 @@ const puppeteer = require('puppeteer');
     // Click the Search Person button
     await page.click('#SearchPersonButton');
 
-    // Wait for results to load - check if results table or results div appears
-    // Adjust this selector if results container changes
+    // Wait for results to load - check if results container has any text
     await page.waitForFunction(() => {
       const resultsDiv = document.querySelector('#PersonResultsDiv');
       return resultsDiv && resultsDiv.innerText.trim().length > 0;
     }, { timeout: 20000 });
+
+    // Add a 2-second delay to ensure any "No results" message fully renders
+    await page.waitForTimeout(2000);
 
     console.log('✅ Search results loaded.');
 
