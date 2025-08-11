@@ -2,14 +2,19 @@ const puppeteer = require("puppeteer");
 const fs = require("fs");
 
 (async () => {
+  try {
     const name = process.env.SEARCH_NAME || "";
     const idNumber = process.env.SEARCH_ID || "";
 
     console.log(`Searching TFS for Name: ${name}, ID: ${idNumber}`);
 
     const browser = await puppeteer.launch({
-        headless: true,
-        args: ["--no-sandbox", "--disable-setuid-sandbox"]
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+      ],
     });
     const page = await browser.newPage();
 
@@ -19,18 +24,18 @@ const fs = require("fs");
     // Select "Person" tab
     await page.click("#tabPerson");
 
-    // Fill form fields
+    // Fill form fields if provided
     if (name) {
-        await page.type("#txtName", name);
+      await page.type("#txtName", name);
     }
     if (idNumber) {
-        await page.type("#txtIDNumber", idNumber);
+      await page.type("#txtIDNumber", idNumber);
     }
 
-    // Click Search button
+    // Click Search button and wait for navigation or network idle
     await Promise.all([
-        page.click("#btnSearchPerson"),
-        page.waitForNavigation({ waitUntil: "networkidle2" })
+      page.click("#btnSearchPerson"),
+      page.waitForNavigation({ waitUntil: "networkidle2" }),
     ]);
 
     // Export to PDF
@@ -41,4 +46,8 @@ const fs = require("fs");
     console.log("PDF saved as tfs-results.pdf");
 
     await browser.close();
+  } catch (error) {
+    console.error("Error occurred:", error);
+    process.exit(1);
+  }
 })();
