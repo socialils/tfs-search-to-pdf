@@ -25,12 +25,13 @@ const fs = require("fs");
 
     await page.goto("https://tfs.fic.gov.za/Pages/Search", { waitUntil: "networkidle2" });
 
+    await page.screenshot({ path: "page.png", fullPage: true });
+    const html = await page.content();
+    fs.writeFileSync("page.html", html);
+    console.log("Saved page screenshot and HTML for debugging");
+
     await page.waitForSelector("body", { timeout: 10000 });
 
-    const content = await page.content();
-    console.log("Page content length:", content.length);
-
-    // Try to fill form if inputs found
     const nameInputExists = await page.$('input[name="txtName"]') !== null;
     console.log("Name input exists?", nameInputExists);
 
