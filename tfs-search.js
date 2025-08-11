@@ -2,7 +2,6 @@ const puppeteer = require("puppeteer");
 
 (async () => {
   try {
-    // Pull inputs from environment variables
     const searchName = process.env.SEARCH_NAME || "";
     const searchId = process.env.SEARCH_ID || "";
 
@@ -13,7 +12,6 @@ const puppeteer = require("puppeteer");
 
     console.log(`🔍 Searching for Name: "${searchName}", ID: "${searchId}"`);
 
-    // Detect GitHub Actions environment
     const isCI = !!process.env.GITHUB_ACTIONS;
 
     const browser = await puppeteer.launch({
@@ -23,34 +21,36 @@ const puppeteer = require("puppeteer");
 
     const page = await browser.newPage();
 
-    // Go to target site
-    await page.goto("https://www.example.com/search", {
+    // Replace with the real TFS search URL
+    await page.goto("https://tfs.fic.gov.za/Pages/Search", {
       waitUntil: "networkidle2"
     });
 
-    // Fill search form if fields are provided
+    // Adjust these selectors to match the actual page input fields
     if (searchName) {
-      await page.type("#nameInput", searchName);
+      await page.type('input[name="txtName"]', searchName);
     }
     if (searchId) {
-      await page.type("#idInput", searchId);
+      await page.type('input[name="txtIDNumber"]', searchId);
     }
 
-    // Submit form
-    await page.click("#submitButton");
-    await page.waitForNavigation({ waitUntil: "networkidle2" });
+    // Submit the form — adjust selector if needed
+    await Promise.all([
+      page.click('input[type="submit"]'),
+      page.waitForNavigation({ waitUntil: "networkidle2" }),
+    ]);
 
-    // Save results page to PDF
+    // Save results to PDF
     await page.pdf({
       path: "tfs-results.pdf",
       format: "A4"
     });
 
-    console.log("✅ Search complete. PDF saved as tfs-results.pdf");
+    console.log("✅ PDF saved as tfs-results.pdf");
 
     await browser.close();
-  } catch (err) {
-    console.error("❌ Error running Puppeteer script:", err);
+  } catch (error) {
+    console.error("❌ Error in Puppeteer script:", error);
     process.exit(1);
   }
 })();
