@@ -18,11 +18,7 @@ const fs = require("fs");
     });
     const page = await browser.newPage();
 
-    // Go to TFS search page
     await page.goto("https://tfs.fic.gov.za/Pages/Search", { waitUntil: "networkidle2" });
-
-    // Select "Person" tab
-    await page.click("#tabPerson");
 
     // Fill form fields if provided
     if (name) {
@@ -38,7 +34,6 @@ const fs = require("fs");
       page.waitForNavigation({ waitUntil: "networkidle2" }),
     ]);
 
-    // Export to PDF
     const pdfBuffer = await page.pdf({ format: "A4", printBackground: true });
 
     fs.writeFileSync("tfs-results.pdf", pdfBuffer);
