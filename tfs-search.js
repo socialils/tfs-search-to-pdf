@@ -20,15 +20,13 @@ const fs = require("fs");
 
     await page.goto("https://tfs.fic.gov.za/Pages/Search", { waitUntil: "networkidle2" });
 
-    // Fill form fields if provided
     if (name) {
-      await page.type("#txtName", name);
+      await page.type('input[name="txtName"]', name);
     }
     if (idNumber) {
-      await page.type("#txtIDNumber", idNumber);
+      await page.type('input[name="txtIDNumber"]', idNumber);
     }
 
-    // Click Search button and wait for navigation or network idle
     await Promise.all([
       page.click("#btnSearchPerson"),
       page.waitForNavigation({ waitUntil: "networkidle2" }),
