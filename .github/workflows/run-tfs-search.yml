@@ -34,8 +34,18 @@ jobs:
           SEARCH_NAME: ${{ github.event.inputs.search_name }}
           SEARCH_ID: ${{ github.event.inputs.search_id }}
 
-      - name: Upload PDF artifact
+      - name: Upload PDF results
         uses: actions/upload-artifact@v4
         with:
           name: tfs-results
           path: tfs-results.pdf
+        if: always() # even if job fails, still try to upload
+
+      - name: Upload debug files
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfs-debug
+          path: |
+            debug-screenshot.png
+            debug-page.html
+        if: always()
