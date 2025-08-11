@@ -1,12 +1,10 @@
-name: Run Puppeteer Script
+name: Run TFS Search
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
-  puppeteer:
+  build:
     runs-on: ubuntu-latest
 
     steps:
@@ -19,23 +17,33 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
-      - name: Run Puppeteer script
-        env:
-          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: false
-          PUPPETEER_EXECUTABLE_PATH: ""
+      - name: Install Chromium dependencies
         run: |
-          node -e "
-          (async () => {
-            const puppeteer = require('puppeteer');
-            const browser = await puppeteer.launch({
-              headless: 'new',
-              args: ['--no-sandbox', '--disable-setuid-sandbox']
-            });
-            const page = await browser.newPage();
-            await page.goto('https://example.com', { waitUntil: 'networkidle2' });
-            console.log(await page.title());
-            await browser.close();
-          })();
-          "
+          sudo apt-get update
+          sudo apt-get install -y \
+            libnss3 \
+            libxss1 \
+            libasound2 \
+            fonts-liberation \
+            libatk-bridge2.0-0 \
+            libatk1.0-0 \
+            libcups2 \
+            libdrm2 \
+            libgbm1 \
+            libgtk-3-0 \
+            libnspr4 \
+            libx11-xcb1 \
+            libxcomposite1 \
+            libxdamage1 \
+            libxrandr2 \
+            xdg-utils \
+            wget
+
+      - name: Run TFS Search
+        run: node tfs-search.js
+        env:
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium-browser
+          PUPPETEER_DISABLE_HEADLESS_WARNING: "true"
+          PUPPETEER_ARGS: "--no-sandbox --disable-setuid-sandbox"
