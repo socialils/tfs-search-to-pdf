@@ -17,6 +17,10 @@ function sleep(ms) {
   let page;  // declare page here to use in catch
   try {
     page = await browser.newPage();
+
+    // Emulate Johannesburg timezone (UTC+2)
+    await page.emulateTimezone('Africa/Johannesburg');
+
     await page.goto('https://tfs.fic.gov.za/Pages/Search', { waitUntil: 'networkidle2' });
 
     await page.waitForSelector('#PersonNameTextBox', { timeout: 15000 });
@@ -38,7 +42,7 @@ function sleep(ms) {
       return resultsDiv && resultsDiv.innerText.trim().length > 0;
     }, { timeout: 20000 });
 
-    await sleep(2000);  // <-- replaced waitForTimeout with sleep
+    await sleep(2000);  // additional delay to ensure full render
 
     console.log('✅ Search results loaded.');
 
