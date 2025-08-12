@@ -21,7 +21,7 @@ async function sharepointLogin(page, siteUrl, username, password) {
   await page.type('input[type="password"]', password, { delay: 50 });
   await page.click('input[type="submit"]');
 
-  // handle stay signed in prompt if appears
+  // Handle stay signed in prompt if appears
   try {
     await page.waitForSelector('#idBtn_Back', { timeout: 10000 });
     await page.click('#idBtn_Back');
@@ -75,9 +75,12 @@ async function uploadFile(page, siteUrl, folderUrl, filePath, fileName) {
 }
 
 (async () => {
-  const username = process.env.SHAREPOINT_USERNAME;
-  const passwordBase64 = process.env.SHAREPOINT_PASSWORD_B64;
-  const password = decodeBase64(passwordBase64);
+  // Decode credentials from base64
+  const usernameB64 = process.env.SHAREPOINT_USERNAME_B64;
+  const passwordB64 = process.env.SHAREPOINT_PASSWORD_B64;
+
+  const username = decodeBase64(usernameB64 || '');
+  const password = decodeBase64(passwordB64 || '');
 
   const siteUrl = process.env.SHAREPOINT_SITE;
   const folderUrl = process.env.SHAREPOINT_FOLDER;
