@@ -7,18 +7,48 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Upload file using SharePoint REST API with cookies
-async function uploadToSharePointWithCookies(filePath, fileName, sharepointSiteUrl, folderServerRelativeUrl, cookies) {
+// Login to SharePoint with username and password to get session cookies
+async function sharepointLogin(page, sharepointSiteUrl, username, password) {
+  // Go to SharePoint login page
+  await page.goto(sharepointSiteUrl, { waitUntil: 'networkidle2' });
+
+  // Wait for login form - this may depend on your tenant's login page structure
+  await page.waitForSelector('input[type="email"]', { timeout: 30000 });
+  await page.type('input[type="email"]', username, { delay: 50 });
+  await page.click('input[type="submit"]');
+
+  // Wait for password input and enter password
+  await page.waitForSelector('input[type="password"]', { timeout: 30000 });
+  await page.type('input[type="password"]', password, { delay: 50 });
+  await page.click('input[type="submit"]');
+
+  // Possibly wait for 'Stay signed in?' prompt and click No/Yes as needed
+  try {
+    await page.waitForSelector('input[id="idBtn_Back"]', { timeout: 10000 });
+    await page.click('input[id="idBtn_Back"]'); // No to stay signed in
+  } catch {
+    // If prompt does not show, continue
+  }
+
+  // Wait for final page load after login
+  await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
+
+  console.log('✅ Logged into SharePoint successfully');
+}
+
+// Upload file to SharePoint using authenticated cookies from Puppeteer
+async function uploadToSharePointWithCookies(filePath, fileName, sharepointSiteUrl, folderServerRelativeUrl, page) {
   const fileContent = fs.readFileSync(filePath);
 
-  // Build cookie header string from Puppeteer cookies
-  const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
-
-  // Compose upload URL (make sure folderServerRelativeUrl is correct)
   const uploadUrl = `${sharepointSiteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderServerRelativeUrl}')/Files/add(overwrite=true, url='${fileName}')`;
 
   console.log(`Uploading file to SharePoint at: ${uploadUrl}`);
 
+  // Get cookies from Puppeteer page and format as header
+  const cookies = await page.cookies();
+  const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+
+  // Send POST request with cookies for authentication
   const res = await fetch(uploadUrl, {
     method: 'POST',
     headers: {
@@ -26,7 +56,8 @@ async function uploadToSharePointWithCookies(filePath, fileName, sharepointSiteU
       'Content-Type': 'application/pdf',
       'Content-Length': fileContent.length.toString(),
       'Cookie': cookieHeader,
-      'X-RequestDigest': await getRequestDigest(sharepointSiteUrl, cookieHeader),
+      // Additional headers may be required by SharePoint
+      'X-RequestDigest': await getRequestDigest(page, sharepointSiteUrl),
     },
     body: fileContent,
   });
@@ -39,20 +70,23 @@ async function uploadToSharePointWithCookies(filePath, fileName, sharepointSiteU
   console.log('✅ Upload to SharePoint successful!');
 }
 
-// Get FormDigestValue (request digest) for POST auth
-async function getRequestDigest(siteUrl, cookieHeader) {
-  const res = await fetch(`${siteUrl}/_api/contextinfo`, {
+// SharePoint requires an X-RequestDigest header for POST requests — get it from the page
+async function getRequestDigest(page, sharepointSiteUrl) {
+  const contextInfoUrl = `${sharepointSiteUrl}/_api/contextinfo`;
+
+  const cookies = await page.cookies();
+  const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+
+  const res = await fetch(contextInfoUrl, {
     method: 'POST',
     headers: {
       'Accept': 'application/json;odata=verbose',
-      'Content-Type': 'application/json;odata=verbose',
       'Cookie': cookieHeader,
     },
   });
 
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Failed to get request digest: ${res.status} ${res.statusText} - ${text}`);
+    throw new Error(`Failed to get request digest: ${res.status} ${res.statusText}`);
   }
 
   const data = await res.json();
@@ -63,13 +97,13 @@ async function getRequestDigest(siteUrl, cookieHeader) {
   const searchName = process.env.SEARCH_NAME || '';
   const searchID = process.env.SEARCH_ID || '';
 
-  const sharepointUsername = process.env.SHAREPOINT_USERNAME;
-  const sharepointPassword = process.env.SHAREPOINT_PASSWORD;
-  const sharepointSite = process.env.SHAREPOINT_SITE;
-  const sharepointFolder = process.env.SHAREPOINT_FOLDER;
+  const sharepointSiteUrl = process.env.SHAREPOINT_SITE; // e.g. https://yourtenant.sharepoint.com/sites/yoursite
+  const sharepointFolderServerRelativeUrl = process.env.SHAREPOINT_FOLDER; // e.g. /sites/yoursite/Shared Documents/YourFolder
+  const sharepointUsername = process.env.SHAREPOINT_USERNAME; // your username/email
+  const sharepointPassword = process.env.SHAREPOINT_PASSWORD; // your password
 
-  if (!sharepointUsername || !sharepointPassword || !sharepointSite || !sharepointFolder) {
-    console.error('❌ Missing SharePoint login environment variables.');
+  if (!sharepointSiteUrl || !sharepointFolderServerRelativeUrl || !sharepointUsername || !sharepointPassword) {
+    console.error('❌ Missing SharePoint environment variables.');
     process.exit(1);
   }
 
@@ -77,40 +111,16 @@ async function getRequestDigest(siteUrl, cookieHeader) {
 
   const browser = await puppeteer.launch({
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    headless: true,
   });
 
   let page;
   try {
     page = await browser.newPage();
 
-    // Emulate Johannesburg timezone
     await page.emulateTimezone('Africa/Johannesburg');
 
-    // Step 1: Log into SharePoint
-    await page.goto(`${sharepointSite}/_layouts/15/Authenticate.aspx`, { waitUntil: 'networkidle2' });
-
-    // You may need to adjust selectors here depending on your login page
-    await page.waitForSelector('input[type="email"]', { timeout: 15000 });
-    await page.type('input[type="email"]', sharepointUsername);
-    await page.click('input[type="submit"]');
-
-    await page.waitForTimeout(2000);
-
-    await page.waitForSelector('input[type="password"]', { timeout: 15000 });
-    await page.type('input[type="password"]', sharepointPassword);
-    await page.click('input[type="submit"]');
-
-    // Handle 'Stay signed in?' prompt
-    try {
-      await page.waitForSelector('input[id="idBtn_Back"]', { timeout: 5000 });
-      await page.click('input[id="idBtn_Back"]'); // Click "No"
-    } catch {}
-
-    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
-
-    console.log('✅ Logged into SharePoint');
-
-    // Now navigate to the TFS search page
+    // Perform TFS search as usual
     await page.goto('https://tfs.fic.gov.za/Pages/Search', { waitUntil: 'networkidle2' });
 
     await page.waitForSelector('#PersonNameTextBox', { timeout: 15000 });
@@ -149,11 +159,11 @@ async function getRequestDigest(siteUrl, cookieHeader) {
 
     console.log(`📄 PDF saved as ${pdfFileName}`);
 
-    // Get cookies after login
-    const cookies = await page.cookies();
+    // Now login to SharePoint to get authenticated session cookies for upload
+    await sharepointLogin(page, sharepointSiteUrl, sharepointUsername, sharepointPassword);
 
-    // Upload PDF using SharePoint REST API with those cookies
-    await uploadToSharePointWithCookies(pdfFilePath, pdfFileName, sharepointSite, sharepointFolder, cookies);
+    // Upload the PDF with authenticated cookies
+    await uploadToSharePointWithCookies(pdfFilePath, pdfFileName, sharepointSiteUrl, sharepointFolderServerRelativeUrl, page);
 
   } catch (error) {
     console.error('❌ Error:', error);
