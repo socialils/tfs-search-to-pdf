@@ -14,9 +14,13 @@ async function uploadToSharePoint(filePath, fileName, sharepointSite, folderPath
   // Basic Auth header
   const auth = Buffer.from(`${username}:${password}`).toString('base64');
 
+  // Encode folder path and filename for URL
+  const encodedFolderPath = encodeURIComponent(folderPath);
+  const encodedFileName = encodeURIComponent(fileName);
+
   // REST API endpoint to upload file
   // folderPath must be server relative, e.g. "/sites/yoursite/Shared Documents/YourFolder"
-  const uploadUrl = `${sharepointSite}/_api/web/GetFolderByServerRelativeUrl('${folderPath}')/Files/add(overwrite=true, url='${fileName}')`;
+  const uploadUrl = `${sharepointSite}/_api/web/GetFolderByServerRelativeUrl('${encodedFolderPath}')/Files/add(overwrite=true, url='${encodedFileName}')`;
 
   console.log(`Uploading file to SharePoint at: ${uploadUrl}`);
 
@@ -26,7 +30,7 @@ async function uploadToSharePoint(filePath, fileName, sharepointSite, folderPath
       'Authorization': `Basic ${auth}`,
       'Accept': 'application/json;odata=verbose',
       'Content-Type': 'application/pdf',
-      'Content-Length': fileContent.length.toString(),
+      // Content-Length header usually not required; removed to avoid issues
     },
     body: fileContent,
   });
