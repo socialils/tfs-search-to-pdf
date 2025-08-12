@@ -7,30 +7,41 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Upload PDF to SharePoint folder using Basic Auth
-async function uploadToSharePoint(filePath, fileName, sharepointSite, folderPath, username, password) {
+async function getAccessToken(tenantId, clientId, clientSecret, sharepointDomain) {
+  const url = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
+  const params = new URLSearchParams();
+  params.append('client_id', clientId);
+  params.append('scope', `${sharepointDomain}/.default`);
+  params.append('client_secret', clientSecret);
+  params.append('grant_type', 'client_credentials');
+
+  const res = await fetch(url, {
+    method: 'POST',
+    body: params,
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to get access token: ${res.status} ${res.statusText}`);
+  }
+
+  const data = await res.json();
+  return data.access_token;
+}
+
+async function uploadToSharePoint(filePath, fileName, sharepointSiteUrl, folderServerRelativeUrl, accessToken) {
   const fileContent = fs.readFileSync(filePath);
 
-  // Basic Auth header
-  const auth = Buffer.from(`${username}:${password}`).toString('base64');
-
-  // Encode folder path and filename for URL
-  const encodedFolderPath = encodeURIComponent(folderPath);
-  const encodedFileName = encodeURIComponent(fileName);
-
-  // REST API endpoint to upload file
-  // folderPath must be server relative, e.g. "/sites/yoursite/Shared Documents/YourFolder"
-  const uploadUrl = `${sharepointSite}/_api/web/GetFolderByServerRelativeUrl('${encodedFolderPath}')/Files/add(overwrite=true, url='${encodedFileName}')`;
+  const uploadUrl = `${sharepointSiteUrl}/_api/web/GetFolderByServerRelativeUrl('${encodeURIComponent(folderServerRelativeUrl)}')/Files/add(overwrite=true, url='${encodeURIComponent(fileName)}')`;
 
   console.log(`Uploading file to SharePoint at: ${uploadUrl}`);
 
   const res = await fetch(uploadUrl, {
     method: 'POST',
     headers: {
-      'Authorization': `Basic ${auth}`,
+      'Authorization': `Bearer ${accessToken}`,
       'Accept': 'application/json;odata=verbose',
       'Content-Type': 'application/pdf',
-      // Content-Length header usually not required; removed to avoid issues
+      'Content-Length': fileContent.length.toString(),
     },
     body: fileContent,
   });
@@ -47,16 +58,18 @@ async function uploadToSharePoint(filePath, fileName, sharepointSite, folderPath
   const searchName = process.env.SEARCH_NAME || '';
   const searchID = process.env.SEARCH_ID || '';
 
-  // SharePoint config from environment (set in GitHub secrets)
-  const sharepointSite = process.env.SHAREPOINT_SITE;
-  const sharepointFolder = process.env.SHAREPOINT_FOLDER;
-  const sharepointUsername = process.env.SHAREPOINT_USERNAME;
-  const sharepointPassword = process.env.SHAREPOINT_PASSWORD;
+  const tenantId = process.env.AZURE_TENANT_ID;
+  const clientId = process.env.AZURE_CLIENT_ID;
+  const clientSecret = process.env.AZURE_CLIENT_SECRET;
+  const sharepointSiteUrl = process.env.SHAREPOINT_SITE;
+  const folderServerRelativeUrl = process.env.SHAREPOINT_FOLDER;
 
-  if (!sharepointSite || !sharepointFolder || !sharepointUsername || !sharepointPassword) {
-    console.error('❌ Missing SharePoint environment variables.');
+  if (!tenantId || !clientId || !clientSecret || !sharepointSiteUrl || !folderServerRelativeUrl) {
+    console.error('❌ Missing environment variables.');
     process.exit(1);
   }
+
+  const sharepointDomain = sharepointSiteUrl.match(/^https:\/\/[^\/]+/)[0];
 
   console.log(`🔍 Searching for Name: "${searchName}", ID: "${searchID}"`);
 
@@ -64,11 +77,10 @@ async function uploadToSharePoint(filePath, fileName, sharepointSite, folderPath
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
 
-  let page;  // declare for catch block
+  let page;
   try {
     page = await browser.newPage();
 
-    // Set timezone to Africa/Johannesburg (UTC+2)
     await page.emulateTimezone('Africa/Johannesburg');
 
     await page.goto('https://tfs.fic.gov.za/Pages/Search', { waitUntil: 'networkidle2' });
@@ -92,11 +104,10 @@ async function uploadToSharePoint(filePath, fileName, sharepointSite, folderPath
       return resultsDiv && resultsDiv.innerText.trim().length > 0;
     }, { timeout: 20000 });
 
-    await sleep(2000);  // wait to ensure full rendering
+    await sleep(2000);
 
     console.log('✅ Search results loaded.');
 
-    // Clean filename safe string for searchName
     const safeSearchName = searchName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
     const pdfFileName = `TFS Results - ${safeSearchName}.pdf`;
     const pdfFilePath = path.join(process.cwd(), pdfFileName);
@@ -110,11 +121,12 @@ async function uploadToSharePoint(filePath, fileName, sharepointSite, folderPath
 
     console.log(`📄 PDF saved as ${pdfFileName}`);
 
-    // Upload to SharePoint
-    await uploadToSharePoint(pdfFilePath, pdfFileName, sharepointSite, sharepointFolder, sharepointUsername, sharepointPassword);
+    const accessToken = await getAccessToken(tenantId, clientId, clientSecret, sharepointDomain);
+
+    await uploadToSharePoint(pdfFilePath, pdfFileName, sharepointSiteUrl, folderServerRelativeUrl, accessToken);
 
   } catch (error) {
-    console.error('❌ Error in Puppeteer script:', error);
+    console.error('❌ Error:', error);
 
     try {
       if (page) {
