@@ -7,31 +7,33 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Login to SharePoint with username and password to get session cookies
+// Improved Login to SharePoint with username and password to get session cookies
 async function sharepointLogin(page, sharepointSiteUrl, username, password) {
-  // Go to SharePoint login page
   await page.goto(sharepointSiteUrl, { waitUntil: 'networkidle2' });
 
-  // Wait for login form - this may depend on your tenant's login page structure
   await page.waitForSelector('input[type="email"]', { timeout: 30000 });
   await page.type('input[type="email"]', username, { delay: 50 });
   await page.click('input[type="submit"]');
 
-  // Wait for password input and enter password
   await page.waitForSelector('input[type="password"]', { timeout: 30000 });
   await page.type('input[type="password"]', password, { delay: 50 });
   await page.click('input[type="submit"]');
 
-  // Possibly wait for 'Stay signed in?' prompt and click No/Yes as needed
   try {
     await page.waitForSelector('input[id="idBtn_Back"]', { timeout: 10000 });
-    await page.click('input[id="idBtn_Back"]'); // No to stay signed in
+    await page.click('input[id="idBtn_Back"]'); // Say No to stay signed in
   } catch {
-    // If prompt does not show, continue
+    // No prompt; continue
   }
 
-  // Wait for final page load after login
-  await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
+  // Wait for URL to change away from login.microsoftonline.com (means logged in)
+  await page.waitForFunction(
+    () => !window.location.href.includes('login.microsoftonline.com'),
+    { timeout: 60000 }
+  );
+
+  // Optional: wait for a SharePoint element that appears only after login
+  // e.g. await page.waitForSelector('#O365_MainLink_NavMenu', { timeout: 60000 });
 
   console.log('✅ Logged into SharePoint successfully');
 }
@@ -48,7 +50,9 @@ async function uploadToSharePointWithCookies(filePath, fileName, sharepointSiteU
   const cookies = await page.cookies();
   const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
 
-  // Send POST request with cookies for authentication
+  // Get X-RequestDigest token (required by SharePoint POST calls)
+  const requestDigest = await getRequestDigest(page, sharepointSiteUrl);
+
   const res = await fetch(uploadUrl, {
     method: 'POST',
     headers: {
@@ -56,8 +60,7 @@ async function uploadToSharePointWithCookies(filePath, fileName, sharepointSiteU
       'Content-Type': 'application/pdf',
       'Content-Length': fileContent.length.toString(),
       'Cookie': cookieHeader,
-      // Additional headers may be required by SharePoint
-      'X-RequestDigest': await getRequestDigest(page, sharepointSiteUrl),
+      'X-RequestDigest': requestDigest,
     },
     body: fileContent,
   });
@@ -70,7 +73,7 @@ async function uploadToSharePointWithCookies(filePath, fileName, sharepointSiteU
   console.log('✅ Upload to SharePoint successful!');
 }
 
-// SharePoint requires an X-RequestDigest header for POST requests — get it from the page
+// Get X-RequestDigest token from SharePoint site
 async function getRequestDigest(page, sharepointSiteUrl) {
   const contextInfoUrl = `${sharepointSiteUrl}/_api/contextinfo`;
 
@@ -159,7 +162,7 @@ async function getRequestDigest(page, sharepointSiteUrl) {
 
     console.log(`📄 PDF saved as ${pdfFileName}`);
 
-    // Now login to SharePoint to get authenticated session cookies for upload
+    // Login to SharePoint to get authenticated session cookies for upload
     await sharepointLogin(page, sharepointSiteUrl, sharepointUsername, sharepointPassword);
 
     // Upload the PDF with authenticated cookies
