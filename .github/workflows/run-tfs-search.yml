@@ -1,33 +1,55 @@
-name: Run TFS Search
+name: Run TFS Search and Upload to SharePoint
 
 on:
   workflow_dispatch:
     inputs:
       search_name:
-        description: 'Name to search'
+        description: "Name to search"
         required: false
-        default: ''
+        default: ""
       search_id:
-        description: 'ID Number to search'
+        description: "ID Number to search"
         required: false
-        default: ''
+        default: ""
 
 jobs:
   run-search:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npm install puppeteer node-fetch@2
-      - run: sudo apt-get update && sudo apt-get install -y libnss3 libxss1 fonts-liberation libatk-bridge2.0-0 libatk1.0-0 libcups2 libdrm2 libgbm1 libgtk-3-0 libnspr4 libx11-xcb1 libxcomposite1 libxdamage1 libxrandr2 xdg-utils wget
+
+      - name: Install dependencies
+        run: npm install node-fetch@2 puppeteer
+
+      - name: Install Chromium dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libnss3 libxss1 fonts-liberation \
+            libatk-bridge2.0-0 libatk1.0-0 libcups2 libdrm2 \
+            libgbm1 libgtk-3-0 libnspr4 libx11-xcb1 libxcomposite1 \
+            libxdamage1 libxrandr2 xdg-utils wget
+
       - name: Run Puppeteer script
         env:
           SEARCH_NAME: ${{ github.event.inputs.search_name }}
           SEARCH_ID: ${{ github.event.inputs.search_id }}
-          SHAREPOINT_USERNAME: ${{ secrets.SHAREPOINT_USERNAME }}
-          SHAREPOINT_PASSWORD: ${{ secrets.SHAREPOINT_PASSWORD }}
           SHAREPOINT_SITE: ${{ secrets.SHAREPOINT_SITE }}
           SHAREPOINT_FOLDER: ${{ secrets.SHAREPOINT_FOLDER }}
+          SHAREPOINT_USERNAME: ${{ secrets.SHAREPOINT_USERNAME }}
+          SHAREPOINT_PASSWORD: ${{ secrets.SHAREPOINT_PASSWORD }}
         run: node tfs-search.js
+
+      - name: Upload PDF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfs-results
+          path: "TFS Results - ${{ github.event.inputs.search_name || 'results' }}.pdf"
+        if: always()
