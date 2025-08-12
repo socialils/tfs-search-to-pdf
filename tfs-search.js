@@ -110,7 +110,7 @@ async function uploadFile(page, siteUrl, folderUrl, filePath, fileName) {
     console.log('✅ Search results loaded.');
 
     const safeName = searchName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-    const pdfFileName = `TFS Results - ${safeName}.pdf`;
+    const pdfFileName = `TFS Results - ${searchName}.pdf`;
     const pdfFilePath = path.join(process.cwd(), pdfFileName);
 
     await page.pdf({
