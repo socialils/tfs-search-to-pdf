@@ -28,13 +28,31 @@ jobs:
       - name: Install dependencies
         run: npm install node-fetch@2 puppeteer
 
+      - name: Install Chromium dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libnss3 libxss1 fonts-liberation \
+            libatk-bridge2.0-0 libatk1.0-0 libcups2 libdrm2 \
+            libgbm1 libgtk-3-0 libnspr4 libx11-xcb1 libxcomposite1 \
+            libxdamage1 libxrandr2 xdg-utils wget
+
       - name: Run Puppeteer script
         env:
           SEARCH_NAME: ${{ github.event.inputs.search_name }}
           SEARCH_ID: ${{ github.event.inputs.search_id }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+
+          # SharePoint login credentials and site info as secrets
+          SHAREPOINT_USERNAME: ${{ secrets.SHAREPOINT_USERNAME }}
+          SHAREPOINT_PASSWORD: ${{ secrets.SHAREPOINT_PASSWORD }}
           SHAREPOINT_SITE: ${{ secrets.SHAREPOINT_SITE }}
           SHAREPOINT_FOLDER: ${{ secrets.SHAREPOINT_FOLDER }}
+
         run: node tfs-search.js
+
+      - name: Upload PDF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfs-results
+          path: "TFS Results - ${{ github.event.inputs.search_name || 'results' }}.pdf"
+        if: always()
