@@ -37,21 +37,18 @@ jobs:
             libgbm1 libgtk-3-0 libnspr4 libx11-xcb1 libxcomposite1 \
             libxdamage1 libxrandr2 xdg-utils wget
 
-      - name: Encode SharePoint credentials
-        id: encode-creds
-        run: |
-          echo "USERNAME_B64=$(echo -n '${{ secrets.SHAREPOINT_USERNAME }}' | base64)" >> $GITHUB_ENV
-          echo "PASSWORD_B64=$(echo -n '${{ secrets.SHAREPOINT_PASSWORD }}' | base64)" >> $GITHUB_ENV
-
-      - name: Run Puppeteer script
+      - name: Decode SharePoint credentials and run Puppeteer script
         env:
           SEARCH_NAME: ${{ github.event.inputs.search_name }}
           SEARCH_ID: ${{ github.event.inputs.search_id }}
 
+          # Base64 encoded secrets
+          SHAREPOINT_USERNAME_B64: ${{ secrets.SHAREPOINT_USERNAME_B64 }}
+          SHAREPOINT_PASSWORD_B64: ${{ secrets.SHAREPOINT_PASSWORD_B64 }}
+
           SHAREPOINT_SITE: ${{ secrets.SHAREPOINT_SITE }}
           SHAREPOINT_FOLDER: ${{ secrets.SHAREPOINT_FOLDER }}
-          SHAREPOINT_USERNAME_B64: ${{ env.USERNAME_B64 }}
-          SHAREPOINT_PASSWORD_B64: ${{ env.PASSWORD_B64 }}
+
         run: node tfs-search.js
 
       - name: Upload debug artifacts
