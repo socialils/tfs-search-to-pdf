@@ -7,20 +7,27 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function decodeBase64(str) {
+  return Buffer.from(str, 'base64').toString('utf-8');
+}
+
 async function sharepointLogin(page, siteUrl, username, password) {
   await page.goto(siteUrl, { waitUntil: 'networkidle2' });
   await page.waitForSelector('input[type="email"]', { timeout: 30000 });
   await page.type('input[type="email"]', username, { delay: 50 });
   await page.click('input[type="submit"]');
+
   await page.waitForSelector('input[type="password"]', { timeout: 30000 });
   await page.type('input[type="password"]', password, { delay: 50 });
   await page.click('input[type="submit"]');
+
   // handle stay signed in prompt if appears
   try {
     await page.waitForSelector('#idBtn_Back', { timeout: 10000 });
     await page.click('#idBtn_Back');
   } catch {}
-  // Wait for a reliable logged-in selector — change this if needed!
+
+  // Wait for a reliable logged-in selector
   await page.waitForSelector('#mectrl_currentAccount_picture > div', { timeout: 30000 });
   console.log('✅ Logged in to SharePoint');
 }
@@ -69,9 +76,11 @@ async function uploadFile(page, siteUrl, folderUrl, filePath, fileName) {
 
 (async () => {
   const username = process.env.SHAREPOINT_USERNAME;
-  const password = process.env.SHAREPOINT_PASSWORD;
-  const siteUrl = process.env.SHAREPOINT_SITE;  // e.g. https://yourtenant.sharepoint.com/sites/yoursite
-  const folderUrl = process.env.SHAREPOINT_FOLDER; // e.g. /sites/yoursite/Shared Documents/YourFolder
+  const passwordBase64 = process.env.SHAREPOINT_PASSWORD_B64;
+  const password = decodeBase64(passwordBase64);
+
+  const siteUrl = process.env.SHAREPOINT_SITE;
+  const folderUrl = process.env.SHAREPOINT_FOLDER;
   const searchName = process.env.SEARCH_NAME || '';
   const searchID = process.env.SEARCH_ID || '';
 
@@ -80,7 +89,10 @@ async function uploadFile(page, siteUrl, folderUrl, filePath, fileName) {
     process.exit(1);
   }
 
-  const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
   const page = await browser.newPage();
 
   try {
@@ -99,17 +111,16 @@ async function uploadFile(page, siteUrl, folderUrl, filePath, fileName) {
     }
     await page.click('#SearchPersonButton');
 
-    // 3. Wait for search results to load
+    // 3. Wait for search results
     await page.waitForFunction(() => {
       const resultsDiv = document.querySelector('#PersonResultsDiv');
       return resultsDiv && resultsDiv.innerText.trim().length > 0;
     }, { timeout: 20000 });
 
     await sleep(2000);
-
     console.log('✅ Search results loaded.');
 
-    // 4. Save PDF with original casing in filename
+    // 4. Save PDF
     const pdfFileName = `TFS Results - ${searchName}.pdf`;
     const pdfFilePath = path.join(process.cwd(), pdfFileName);
 
@@ -119,19 +130,16 @@ async function uploadFile(page, siteUrl, folderUrl, filePath, fileName) {
       printBackground: true,
       landscape: false,
     });
-
     console.log(`📄 PDF saved as ${pdfFileName}`);
 
     // 5. Log in to SharePoint
     await sharepointLogin(page, siteUrl, username, password);
 
-    // 6. Upload PDF to SharePoint
+    // 6. Upload PDF
     await uploadFile(page, siteUrl, folderUrl, pdfFilePath, pdfFileName);
 
   } catch (error) {
     console.error('❌ Error:', error);
-
-    // Save screenshot + HTML for debugging
     try {
       await page.screenshot({ path: 'login-failed.png', fullPage: true });
       const html = await page.content();
@@ -140,7 +148,6 @@ async function uploadFile(page, siteUrl, folderUrl, filePath, fileName) {
     } catch (saveError) {
       console.error('❌ Failed to save debug files:', saveError);
     }
-
     process.exit(1);
   } finally {
     await browser.close();
