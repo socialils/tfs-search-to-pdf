@@ -20,7 +20,7 @@ async function sharepointLogin(page, siteUrl, username, password) {
     await page.click('#idBtn_Back');
   } catch {}
   // Wait for a reliable selector that confirms successful login:
-  await page.waitForSelector('#O365_MainLink_NavMenu', { timeout: 60000 });
+  await page.waitForSelector('#mectrl_currentAccount_picture > div', { timeout: 60000 });
   console.log('Logged in to SharePoint');
 }
 
