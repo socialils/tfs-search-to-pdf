@@ -7,41 +7,26 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function getAccessToken(tenantId, clientId, clientSecret, sharepointDomain) {
-  const url = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
-  const params = new URLSearchParams();
-  params.append('client_id', clientId);
-  params.append('scope', `${sharepointDomain}/.default`);
-  params.append('client_secret', clientSecret);
-  params.append('grant_type', 'client_credentials');
-
-  const res = await fetch(url, {
-    method: 'POST',
-    body: params,
-  });
-
-  if (!res.ok) {
-    throw new Error(`Failed to get access token: ${res.status} ${res.statusText}`);
-  }
-
-  const data = await res.json();
-  return data.access_token;
-}
-
-async function uploadToSharePoint(filePath, fileName, sharepointSiteUrl, folderServerRelativeUrl, accessToken) {
+// Upload file using SharePoint REST API with cookies
+async function uploadToSharePointWithCookies(filePath, fileName, sharepointSiteUrl, folderServerRelativeUrl, cookies) {
   const fileContent = fs.readFileSync(filePath);
 
-  const uploadUrl = `${sharepointSiteUrl}/_api/web/GetFolderByServerRelativeUrl('${encodeURIComponent(folderServerRelativeUrl)}')/Files/add(overwrite=true, url='${encodeURIComponent(fileName)}')`;
+  // Build cookie header string from Puppeteer cookies
+  const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+
+  // Compose upload URL (make sure folderServerRelativeUrl is correct)
+  const uploadUrl = `${sharepointSiteUrl}/_api/web/GetFolderByServerRelativeUrl('${folderServerRelativeUrl}')/Files/add(overwrite=true, url='${fileName}')`;
 
   console.log(`Uploading file to SharePoint at: ${uploadUrl}`);
 
   const res = await fetch(uploadUrl, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${accessToken}`,
       'Accept': 'application/json;odata=verbose',
       'Content-Type': 'application/pdf',
       'Content-Length': fileContent.length.toString(),
+      'Cookie': cookieHeader,
+      'X-RequestDigest': await getRequestDigest(sharepointSiteUrl, cookieHeader),
     },
     body: fileContent,
   });
@@ -54,22 +39,39 @@ async function uploadToSharePoint(filePath, fileName, sharepointSiteUrl, folderS
   console.log('✅ Upload to SharePoint successful!');
 }
 
+// Get FormDigestValue (request digest) for POST auth
+async function getRequestDigest(siteUrl, cookieHeader) {
+  const res = await fetch(`${siteUrl}/_api/contextinfo`, {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json;odata=verbose',
+      'Content-Type': 'application/json;odata=verbose',
+      'Cookie': cookieHeader,
+    },
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to get request digest: ${res.status} ${res.statusText} - ${text}`);
+  }
+
+  const data = await res.json();
+  return data.d.GetContextWebInformation.FormDigestValue;
+}
+
 (async () => {
   const searchName = process.env.SEARCH_NAME || '';
   const searchID = process.env.SEARCH_ID || '';
 
-  const tenantId = process.env.AZURE_TENANT_ID;
-  const clientId = process.env.AZURE_CLIENT_ID;
-  const clientSecret = process.env.AZURE_CLIENT_SECRET;
-  const sharepointSiteUrl = process.env.SHAREPOINT_SITE;
-  const folderServerRelativeUrl = process.env.SHAREPOINT_FOLDER;
+  const sharepointUsername = process.env.SHAREPOINT_USERNAME;
+  const sharepointPassword = process.env.SHAREPOINT_PASSWORD;
+  const sharepointSite = process.env.SHAREPOINT_SITE;
+  const sharepointFolder = process.env.SHAREPOINT_FOLDER;
 
-  if (!tenantId || !clientId || !clientSecret || !sharepointSiteUrl || !folderServerRelativeUrl) {
-    console.error('❌ Missing environment variables.');
+  if (!sharepointUsername || !sharepointPassword || !sharepointSite || !sharepointFolder) {
+    console.error('❌ Missing SharePoint login environment variables.');
     process.exit(1);
   }
-
-  const sharepointDomain = sharepointSiteUrl.match(/^https:\/\/[^\/]+/)[0];
 
   console.log(`🔍 Searching for Name: "${searchName}", ID: "${searchID}"`);
 
@@ -81,8 +83,34 @@ async function uploadToSharePoint(filePath, fileName, sharepointSiteUrl, folderS
   try {
     page = await browser.newPage();
 
+    // Emulate Johannesburg timezone
     await page.emulateTimezone('Africa/Johannesburg');
 
+    // Step 1: Log into SharePoint
+    await page.goto(`${sharepointSite}/_layouts/15/Authenticate.aspx`, { waitUntil: 'networkidle2' });
+
+    // You may need to adjust selectors here depending on your login page
+    await page.waitForSelector('input[type="email"]', { timeout: 15000 });
+    await page.type('input[type="email"]', sharepointUsername);
+    await page.click('input[type="submit"]');
+
+    await page.waitForTimeout(2000);
+
+    await page.waitForSelector('input[type="password"]', { timeout: 15000 });
+    await page.type('input[type="password"]', sharepointPassword);
+    await page.click('input[type="submit"]');
+
+    // Handle 'Stay signed in?' prompt
+    try {
+      await page.waitForSelector('input[id="idBtn_Back"]', { timeout: 5000 });
+      await page.click('input[id="idBtn_Back"]'); // Click "No"
+    } catch {}
+
+    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
+
+    console.log('✅ Logged into SharePoint');
+
+    // Now navigate to the TFS search page
     await page.goto('https://tfs.fic.gov.za/Pages/Search', { waitUntil: 'networkidle2' });
 
     await page.waitForSelector('#PersonNameTextBox', { timeout: 15000 });
@@ -121,9 +149,11 @@ async function uploadToSharePoint(filePath, fileName, sharepointSiteUrl, folderS
 
     console.log(`📄 PDF saved as ${pdfFileName}`);
 
-    const accessToken = await getAccessToken(tenantId, clientId, clientSecret, sharepointDomain);
+    // Get cookies after login
+    const cookies = await page.cookies();
 
-    await uploadToSharePoint(pdfFilePath, pdfFileName, sharepointSiteUrl, folderServerRelativeUrl, accessToken);
+    // Upload PDF using SharePoint REST API with those cookies
+    await uploadToSharePointWithCookies(pdfFilePath, pdfFileName, sharepointSite, sharepointFolder, cookies);
 
   } catch (error) {
     console.error('❌ Error:', error);
