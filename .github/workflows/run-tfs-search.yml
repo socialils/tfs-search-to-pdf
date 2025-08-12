@@ -42,11 +42,11 @@ jobs:
           SEARCH_NAME: ${{ github.event.inputs.search_name }}
           SEARCH_ID: ${{ github.event.inputs.search_id }}
 
-          # SharePoint login credentials and site info as secrets
-          SHAREPOINT_USERNAME: ${{ secrets.SHAREPOINT_USERNAME }}
-          SHAREPOINT_PASSWORD: ${{ secrets.SHAREPOINT_PASSWORD }}
+          # SharePoint login credentials (set these as GitHub secrets)
           SHAREPOINT_SITE: ${{ secrets.SHAREPOINT_SITE }}
           SHAREPOINT_FOLDER: ${{ secrets.SHAREPOINT_FOLDER }}
+          SHAREPOINT_USERNAME: ${{ secrets.SHAREPOINT_USERNAME }}
+          SHAREPOINT_PASSWORD: ${{ secrets.SHAREPOINT_PASSWORD }}
 
         run: node tfs-search.js
 
