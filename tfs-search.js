@@ -8,30 +8,34 @@ function sleep(ms) {
 }
 
 function decodeBase64(str) {
-  return Buffer.from(str, 'base64').toString('utf-8').trim(); // trim fixes the % issue
+  return Buffer.from(str || '', 'base64')
+    .toString('utf-8')
+    .replace(/\r?\n|\r/g, '')
+    .trim();
 }
 
 async function sharepointLogin(page, siteUrl, username, password) {
   await page.goto(siteUrl, { waitUntil: 'networkidle2' });
 
+  // Type username
   await page.waitForSelector('input[type="email"]', { timeout: 30000 });
   await page.type('input[type="email"]', username, { delay: 50 });
   await page.click('input[type="submit"]');
 
-  await page.waitForSelector('input[type="password"]', { timeout: 30000 });
-  await page.type('input[type="password"]', password, { delay: 50 });
+  // Type password
+  await page.waitForSelector('input[name="passwd"], input[type="password"]', { timeout: 30000 });
+  await page.type('input[name="passwd"], input[type="password"]', password, { delay: 50 });
   await page.click('input[type="submit"]');
 
-  // Handle Stay Signed In prompt if appears
+  // Handle "Stay signed in?" prompt
   try {
-    await page.waitForSelector('#idBtn_Back', { timeout: 8000 });
-    await page.click('#idBtn_Back');
-    console.log('ℹ️ Handled Stay signed in prompt.');
+    await page.waitForSelector('#idBtn_Back', { timeout: 10000 });
+    await page.click('#idBtn_Back'); // Click "No"
   } catch {
-    console.log('ℹ️ No Stay signed in prompt detected.');
+    console.log('ℹ️ Stay signed in prompt did not appear.');
   }
 
-  // Wait for a reliable logged-in selector
+  // Wait for account picture to confirm login
   await page.waitForSelector('#mectrl_currentAccount_picture > div', { timeout: 30000 });
   console.log('✅ Logged in to SharePoint');
 }
@@ -79,13 +83,8 @@ async function uploadFile(page, siteUrl, folderUrl, filePath, fileName) {
 }
 
 (async () => {
-  // Decode credentials from base64
-  const usernameB64 = process.env.SHAREPOINT_USERNAME_B64;
-  const passwordB64 = process.env.SHAREPOINT_PASSWORD_B64;
-
-  const username = decodeBase64(usernameB64 || '');
-  const password = decodeBase64(passwordB64 || '');
-
+  const username = decodeBase64(process.env.SHAREPOINT_USERNAME_B64);
+  const password = decodeBase64(process.env.SHAREPOINT_PASSWORD_B64);
   const siteUrl = process.env.SHAREPOINT_SITE;
   const folderUrl = process.env.SHAREPOINT_FOLDER;
   const searchName = process.env.SEARCH_NAME || '';
@@ -97,10 +96,11 @@ async function uploadFile(page, siteUrl, folderUrl, filePath, fileName) {
   }
 
   const browser = await puppeteer.launch({
-    headless: true,
+    headless: false, // non-headless mode for manual debugging
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
   const page = await browser.newPage();
+  page.setDefaultTimeout(60000);
 
   try {
     // 1. Navigate to TFS search page
@@ -118,7 +118,7 @@ async function uploadFile(page, siteUrl, folderUrl, filePath, fileName) {
     }
     await page.click('#SearchPersonButton');
 
-    // 3. Wait for search results
+    // 3. Wait for results
     await page.waitForFunction(() => {
       const resultsDiv = document.querySelector('#PersonResultsDiv');
       return resultsDiv && resultsDiv.innerText.trim().length > 0;
@@ -128,14 +128,12 @@ async function uploadFile(page, siteUrl, folderUrl, filePath, fileName) {
     console.log('✅ Search results loaded.');
 
     // 4. Save PDF
-    const pdfFileName = `TFS Results - ${searchName}.pdf`;
+    const pdfFileName = `TFS Results - ${searchName || searchID}.pdf`;
     const pdfFilePath = path.join(process.cwd(), pdfFileName);
-
     await page.pdf({
       path: pdfFilePath,
       format: 'A4',
       printBackground: true,
-      landscape: false,
     });
     console.log(`📄 PDF saved as ${pdfFileName}`);
 
