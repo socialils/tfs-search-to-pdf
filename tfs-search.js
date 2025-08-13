@@ -8,11 +8,12 @@ function sleep(ms) {
 }
 
 function decodeBase64(str) {
-  return Buffer.from(str, 'base64').toString('utf-8');
+  return Buffer.from(str, 'base64').toString('utf-8').trim(); // trim fixes the % issue
 }
 
 async function sharepointLogin(page, siteUrl, username, password) {
   await page.goto(siteUrl, { waitUntil: 'networkidle2' });
+
   await page.waitForSelector('input[type="email"]', { timeout: 30000 });
   await page.type('input[type="email"]', username, { delay: 50 });
   await page.click('input[type="submit"]');
@@ -21,11 +22,14 @@ async function sharepointLogin(page, siteUrl, username, password) {
   await page.type('input[type="password"]', password, { delay: 50 });
   await page.click('input[type="submit"]');
 
-  // Handle stay signed in prompt if appears
+  // Handle Stay Signed In prompt if appears
   try {
-    await page.waitForSelector('#idBtn_Back', { timeout: 10000 });
+    await page.waitForSelector('#idBtn_Back', { timeout: 8000 });
     await page.click('#idBtn_Back');
-  } catch {}
+    console.log('ℹ️ Handled Stay signed in prompt.');
+  } catch {
+    console.log('ℹ️ No Stay signed in prompt detected.');
+  }
 
   // Wait for a reliable logged-in selector
   await page.waitForSelector('#mectrl_currentAccount_picture > div', { timeout: 30000 });
